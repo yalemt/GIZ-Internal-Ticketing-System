@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Requester App — Internal Ticketing System</title>
+<style>
+  :root{
+    --blue:#1155cc; --blue-dark:#0b3d91; --blue-light:#eaf1fd; --border:#d7e1f2;
+    --text:#1b1f27; --muted:#5b6779; --bg:#ffffff; --ok:#1e8e3e; --warn:#b8860b; --danger:#c62828;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:"Segoe UI",Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);}
+  header{
+    background:var(--bg);border-bottom:2px solid var(--blue);padding:18px 28px;
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+  }
+  header h1{font-size:19px;color:var(--blue-dark);margin:0;}
+  header p{margin:2px 0 0;color:var(--muted);font-size:12.5px;}
+  .app-badge{
+    font-size:11.5px;font-weight:700;color:#fff;background:var(--blue);
+    padding:4px 10px;border-radius:12px;
+  }
+  nav{display:flex;gap:6px;align-items:center;}
+  nav button{
+    background:var(--bg);color:var(--blue-dark);border:1.5px solid var(--blue);
+    padding:8px 16px;border-radius:6px;font-size:13.5px;cursor:pointer;
+  }
+  nav button.active{background:var(--blue);color:#fff;}
+
+  .sync-bar{
+    background:#fbfcfe;border-bottom:1px solid var(--border);
+    padding:8px 28px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;
+  }
+  .sync-bar button{
+    background:#fff;border:1.5px solid var(--blue);color:var(--blue-dark);
+    padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;
+  }
+  .sync-bar button:hover{background:var(--blue-light);}
+  #syncStatus{color:var(--muted);}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:#c0c0c0;}
+  .dot.on{background:var(--ok);}
+  .dot.err{background:var(--danger);}
+
+  main{max-width:1000px;margin:0 auto;padding:22px 24px 60px;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .chat-shell{border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .chat-window{height:430px;overflow-y:auto;padding:18px;background:#fbfcfe;}
+  .msg{max-width:75%;margin-bottom:12px;padding:10px 14px;border-radius:10px;font-size:14px;line-height:1.45;white-space:pre-wrap;}
+  .msg.bot{background:var(--blue-light);color:var(--text);border:1px solid var(--border);}
+  .msg.user{background:var(--blue);color:#fff;margin-left:auto;}
+  .msg.system{background:#fff;border:1px dashed var(--blue);color:var(--blue-dark);max-width:100%;font-weight:600;}
+  .quick-replies{display:flex;flex-wrap:wrap;gap:8px;padding:0 18px 14px;background:#fbfcfe;}
+  .quick-replies button{background:#fff;border:1.5px solid var(--blue);color:var(--blue-dark);border-radius:16px;padding:6px 14px;font-size:13px;cursor:pointer;}
+  .quick-replies button:hover{background:var(--blue-light);}
+  .chat-input{display:flex;border-top:1px solid var(--border);}
+  .chat-input input{flex:1;border:none;padding:14px;font-size:14px;outline:none;}
+  .chat-input button{background:var(--blue);color:#fff;border:none;padding:0 22px;font-size:14px;cursor:pointer;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{border-bottom:1px solid var(--border);padding:8px 10px;text-align:left;white-space:nowrap;}
+  th{background:var(--blue-light);color:var(--blue-dark);position:sticky;top:0;}
+  .table-wrap{max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:10px;}
+  .badge{display:inline-block;padding:2px 9px;border-radius:12px;font-size:11.5px;font-weight:600;color:#fff;}
+  .b-normal{background:#5b6779;} .b-high{background:var(--warn);} .b-urgent{background:var(--danger);}
+  .toolbar{display:flex;gap:10px;margin:14px 0 18px;flex-wrap:wrap;align-items:center;}
+  .toolbar button{background:#fff;border:1.5px solid var(--blue);color:var(--blue-dark);padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer;}
+  .toolbar button:hover{background:var(--blue-light);}
+  .toolbar input[type=text]{padding:6px 10px;border:1px solid var(--border);border-radius:6px;}
+  footer{text-align:center;color:var(--muted);font-size:12px;padding:18px;border-top:1px solid var(--border);}
+  .note{font-size:12.5px;color:var(--muted);margin-top:10px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Internal Request &amp; Ticketing System <span class="app-badge">REQUESTER APP</span></h1>
+    <p>Submit requests and track their status · AI-guided intake (KIM concept)</p>
+  </div>
+  <nav>
+    <button id="tab-chat" class="active" onclick="showView('chat')">New Request (Chatbot)</button>
+    <button id="tab-mine" onclick="showView('mine')">My Tickets</button>
+  </nav>
+</header>
+
+<div class="sync-bar">
+  <span class="dot" id="syncDot"></span>
+  <span id="syncStatus">Not connected to shared file yet.</span>
+  <button onclick="createNewSharedFile()">Create shared file (first time only)</button>
+  <button onclick="connectExistingFile()">Connect to shared file</button>
+  <button onclick="syncNow()">Sync now</button>
+</div>
+
+<main>
+
+  <section id="view-chat" class="view active">
+    <div class="chat-shell">
+      <div class="chat-window" id="chatWindow"></div>
+      <div class="quick-replies" id="quickReplies"></div>
+      <div class="chat-input">
+        <input id="chatInput" type="text" placeholder="Type your answer and press Enter…" autocomplete="off">
+        <button id="sendBtn" onclick="handleSend()">Send</button>
+      </div>
+    </div>
+    <p class="note">This assistant simulates the AI-supported intake described in Sections 13–14 of the concept note. KIM is GIZ's internal generative-AI service — this classifier is a transparent stand-in for it; actual KIM/API integration must be confirmed with the GIZ IT team before production use. Connect to the shared file above (once) so your requests reach the Service Unit's dashboard.</p>
+  </section>
+
+  <section id="view-mine" class="view">
+    <div class="toolbar">
+      <label>Look up by contact (email/phone):
+        <input type="text" id="myContactInput" placeholder="you@example.org">
+      </label>
+      <button onclick="renderMyTickets()">Find my tickets</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ticket ID</th><th>Date</th><th>Title</th><th>Category</th><th>Priority</th><th>Status</th><th>Service Unit</th></tr></thead>
+        <tbody id="myTicketsBody"></tbody>
+      </table>
+    </div>
+    <p class="note">Status is set by the Service Unit on their Admin app and reaches you once both machines have synced. If you haven't connected to the shared file yet, you'll only see tickets you've submitted in this session.</p>
+    <div class="toolbar">
+      <button onclick="exportJSON()">⬇ Manual backup (JSON)</button>
+      <label>⬆ Restore backup: <input type="file" id="importFile" accept="application/json" onchange="importJSON(event)"></label>
+    </div>
+  </section>
+
+</main>
+
+<footer>Requester App — Internal Request &amp; Ticketing System. Not affiliated with or endorsed by GIZ KIM.</footer>
+
+<script>
+/* ---------------------------------------------------------------
+   DATA MODEL
+--------------------------------------------------------------- */
+let tickets = [];
+let ticketSeq = 1;
+
+const CATEGORIES = {
+  "Procurement-related request": {
+    unit: "Procurement Service Unit",
+    fields: [
+      {key:"estValue", q:"What is the estimated value of this procurement (e.g. currency + amount)?"},
+      {key:"reqDate", q:"By what date is this required?"},
+      {key:"project", q:"Which project / cost centre should this be charged to?"},
+      {key:"budget", q:"Is budget already confirmed available for this? (Yes / No)"},
+      {key:"specs", q:"Please briefly describe the technical specification (or type 'attached' if you will send it separately)."}
+    ]
+  },
+  "Contract-related request": {
+    unit: "Contracts Service Unit",
+    fields: [
+      {key:"contractRef", q:"What is the related contract reference / number (if known)?"},
+      {key:"reqDate", q:"By what date is a response needed?"},
+      {key:"project", q:"Which project is this contract linked to?"}
+    ]
+  },
+  "Vendor-related request": {
+    unit: "Procurement Service Unit",
+    fields: [
+      {key:"vendorName", q:"What is the vendor's name?"},
+      {key:"issue", q:"What is the nature of the vendor issue (payment, performance, onboarding, other)?"}
+    ]
+  },
+  "Clarification request": {
+    unit: "Relevant Service Unit",
+    fields: [
+      {key:"refTicket", q:"Is this related to an earlier request or ticket? If yes, provide the reference (or type 'none')."}
+    ]
+  },
+  "System or administrative issue": {
+    unit: "IT / Admin Service Unit",
+    fields: [
+      {key:"system", q:"Which system or process is affected?"},
+      {key:"impact", q:"How is this impacting your work (brief description)?"}
+    ]
+  },
+  "Other service-related request": {
+    unit: "General Services Unit",
+    fields: [
+      {key:"details", q:"Please describe what you need in a bit more detail."}
+    ]
+  }
+};
+
+const PRIORITIES = ["Normal","High","Urgent"];
+
+/* ---------------------------------------------------------------
+   SIMPLE KEYWORD-BASED CATEGORY CLASSIFIER (stands in for KIM)
+   KIM is GIZ's internal generative-AI service. This rule-based
+   function is a transparent placeholder for it — swap its body
+   for a real KIM API call once integration is confirmed with the
+   GIZ IT team (see Section 14 of the concept note).
+--------------------------------------------------------------- */
+function classifyCategory(text){
+  const t = text.toLowerCase();
+  const rules = [
+    {cat:"Procurement-related request", kws:["procure","purchase","buy","equipment","goods","supplies","quotation","rfq","tender"]},
+    {cat:"Contract-related request", kws:["contract","agreement","amendment","extension","fa ","la ","grant agreement"]},
+    {cat:"Vendor-related request", kws:["vendor","supplier","payment delay","invoice not paid","onboard vendor"]},
+    {cat:"System or administrative issue", kws:["system down","error","login","access issue","password","admin","broken","not working"]},
+    {cat:"Clarification request", kws:["clarify","clarification","question about","not sure","explain"]},
+  ];
+  for(const r of rules){
+    if(r.kws.some(k=>t.includes(k))) return r.cat;
+  }
+  return "Other service-related request";
+}
+
+/* ---------------------------------------------------------------
+   CHAT ENGINE
+--------------------------------------------------------------- */
+const chatWindow = document.getElementById('chatWindow');
+const quickReplies = document.getElementById('quickReplies');
+const chatInput = document.getElementById('chatInput');
+let convo = null;
+
+function botSay(text){ const d=document.createElement('div'); d.className='msg bot'; d.textContent=text; chatWindow.appendChild(d); chatWindow.scrollTop=chatWindow.scrollHeight; }
+function systemSay(text){ const d=document.createElement('div'); d.className='msg system'; d.textContent=text; chatWindow.appendChild(d); chatWindow.scrollTop=chatWindow.scrollHeight; }
+function userSay(text){ const d=document.createElement('div'); d.className='msg user'; d.textContent=text; chatWindow.appendChild(d); chatWindow.scrollTop=chatWindow.scrollHeight; }
+function setQuickReplies(options, onPick){
+  quickReplies.innerHTML='';
+  options.forEach(opt=>{
+    const b=document.createElement('button'); b.textContent=opt;
+    b.onclick=()=>{ userSay(opt); quickReplies.innerHTML=''; onPick(opt); };
+    quickReplies.appendChild(b);
+  });
+}
+
+function startConversation(){
+  chatWindow.innerHTML=''; quickReplies.innerHTML='';
+  convo = { step:'name', data:{ extra:{} } };
+  botSay("Hello — I'm the request intake assistant. I'll ask a few questions to set up your ticket. What is your full name?");
+  chatInput.focus();
+}
+
+function handleSend(){
+  const val = chatInput.value.trim();
+  if(!val) return;
+  userSay(val); chatInput.value=''; advance(val);
+}
+chatInput.addEventListener('keydown', e=>{ if(e.key==='Enter') handleSend(); });
+
+function advance(input){
+  const c = convo;
+  switch(c.step){
+    case 'name':
+      c.data.requester = input; c.step='dept';
+      botSay(`Thanks, ${input.split(' ')[0]}. Which department or project are you requesting on behalf of?`);
+      break;
+    case 'dept':
+      c.data.dept = input; c.step='contact';
+      botSay("What's the best contact (email or phone) to reach you for follow-up?");
+      break;
+    case 'contact':
+      c.data.contact = input; c.step='describe';
+      botSay("Please describe what you need, in your own words — I'll figure out the category.");
+      break;
+    case 'describe':
+      c.data.description = input;
+      c.data.title = input.length>60 ? input.slice(0,57)+'...' : input;
+      const guessed = classifyCategory(input);
+      c.data.category = guessed;
+      c.step='confirmCategory';
+      botSay(`Based on that, I've categorized this as: "${guessed}". Is that correct?`);
+      setQuickReplies(['Yes, that\'s correct','No, let me pick'], (opt)=>{
+        if(opt.startsWith('Yes')){ goToCategoryFields(); }
+        else{
+          botSay("No problem — please choose the correct category:");
+          setQuickReplies(Object.keys(CATEGORIES), (picked)=>{ c.data.category = picked; goToCategoryFields(); });
+        }
+      });
+      break;
+    case 'categoryField':
+      const field = c.pendingFields[0];
+      c.data.extra[field.key] = input;
+      c.pendingFields.shift();
+      askNextField();
+      break;
+    default: break;
+  }
+}
+
+function goToCategoryFields(){
+  const c = convo;
+  const catDef = CATEGORIES[c.data.category];
+  c.data.serviceUnit = catDef.unit;
+  c.pendingFields = [...catDef.fields];
+  c.step='categoryField';
+  systemSay(`Category confirmed: ${c.data.category} → routed to ${catDef.unit}`);
+  askNextField();
+}
+
+function askNextField(){
+  const c = convo;
+  if(c.pendingFields.length===0){ askPriority(); return; }
+  botSay(c.pendingFields[0].q);
+}
+
+function askPriority(){
+  const c = convo;
+  c.step='priority';
+  botSay("Last question — what priority should this request have?");
+  setQuickReplies(PRIORITIES, (p)=>{ c.data.priority = p; finalizeTicket(); });
+}
+
+function finalizeTicket(){
+  const c = convo;
+  systemSay("Running completeness check…");
+  const missing = Object.entries(c.data.extra).filter(([k,v])=>!v || v.trim()==='').map(([k])=>k);
+  if(missing.length>0){
+    systemSay(`Some fields still look incomplete: ${missing.join(', ')}. Please provide them, or type 'skip' to proceed anyway.`);
+  }
+  const ticket = submitTicket(c.data);
+  systemSay(`✅ Ticket created: ${ticket.id}\nCategory: ${ticket.category}\nRouted to: ${ticket.serviceUnit}\nPriority: ${ticket.priority}\nStatus: ${ticket.status}\n\nYou can track this any time under "My Tickets" using the contact you gave (${ticket.contact}). Once this laptop syncs with the shared file, the Service Unit will see it on their dashboard.`);
+  setQuickReplies(['Submit another request','Go to My Tickets'], (opt)=>{
+    if(opt==='Go to My Tickets'){
+      showView('mine');
+      document.getElementById('myContactInput').value = lastSubmittedContact;
+      renderMyTickets();
+    } else { startConversation(); }
+  });
+}
+
+/* ---------------------------------------------------------------
+   TICKET STORE
+--------------------------------------------------------------- */
+function genTicketId(){
+  const d = new Date();
+  const ymd = d.toISOString().slice(0,10).replace(/-/g,'');
+  const rand = Math.random().toString(36).slice(2,6).toUpperCase();
+  return `TCK-${ymd}-${rand}`;
+}
+
+let lastSubmittedContact = '';
+
+function submitTicket(data){
+  const now = new Date();
+  lastSubmittedContact = (data.contact || '').trim();
+  const ticket = {
+    id: genTicketId(),
+    date: now.toISOString(),
+    updatedAt: now.toISOString(),
+    title: data.title,
+    description: data.description,
+    category: data.category,
+    requester: data.requester,
+    dept: data.dept,
+    contact: data.contact,
+    priority: data.priority,
+    status: 'NEW',
+    serviceUnit: data.serviceUnit,
+    extra: data.extra
+  };
+  tickets.push(ticket);
+  renderAll();
+  syncNow(); // push to shared file immediately if connected
+  return ticket;
+}
+
+function renderAll(){
+  renderMyTickets();
+}
+
+function escapeHtml(s){
+  return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function renderMyTickets(){
+  const input = document.getElementById('myContactInput');
+  const contact = (input.value || lastSubmittedContact || '').trim().toLowerCase();
+  const tbody = document.getElementById('myTicketsBody');
+  if(!contact){
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:16px;">Enter your contact info above to look up your tickets.</td></tr>';
+    return;
+  }
+  const mine = tickets.filter(t => (t.contact||'').trim().toLowerCase() === contact);
+  tbody.innerHTML = mine.length ? '' : '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:16px;">No tickets found for that contact yet.</td></tr>';
+  mine.slice().reverse().forEach(t=>{
+    const prClass = t.priority==='Urgent' ? 'b-urgent' : t.priority==='High' ? 'b-high' : 'b-normal';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${t.id}</td><td>${new Date(t.date).toLocaleDateString()}</td><td>${escapeHtml(t.title)}</td>
+      <td>${t.category}</td><td><span class="badge ${prClass}">${t.priority}</span></td>
+      <td>${t.status}</td><td>${t.serviceUnit}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+/* ---------------------------------------------------------------
+   MANUAL BACKUP (fallback for browsers without File System Access API)
+--------------------------------------------------------------- */
+function exportJSON(){
+  const blob = new Blob([JSON.stringify({tickets, ticketSeq}, null, 2)], {type:'application/json'});
+  downloadBlob(blob, `requester_backup_${Date.now()}.json`);
+}
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+function importJSON(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const parsed = JSON.parse(e.target.result);
+      mergeTickets(parsed.tickets || []);
+      ticketSeq = Math.max(ticketSeq, parsed.ticketSeq || 1);
+      renderAll();
+      alert(`Restored/merged ${(parsed.tickets||[]).length} tickets.`);
+    }catch(err){ alert('Could not parse file: '+err.message); }
+  };
+  reader.readAsText(file);
+}
+
+/* ---------------------------------------------------------------
+   SYNC ENGINE — shared JSON file inside a Drive/OneDrive-synced
+   folder. Requires Chrome or Edge (File System Access API).
+   NOTE: this is folder-sync integration, not a live server — the
+   other app only sees your changes once Drive/OneDrive has synced
+   the file to their machine, and vice versa.
+--------------------------------------------------------------- */
+let fileHandle = null;
+let syncing = false;
+let autoSyncTimer = null;
+
+function supportsFS(){ return !!window.showOpenFilePicker; }
+
+function setSyncStatus(text, state){
+  document.getElementById('syncStatus').textContent = text;
+  const dot = document.getElementById('syncDot');
+  dot.className = 'dot' + (state==='on' ? ' on' : state==='err' ? ' err' : '');
+}
+
+async function createNewSharedFile(){
+  if(!supportsFS()){ alert('Your browser doesn\'t support direct file sync (needs Chrome or Edge). Use the manual backup Export/Import in "My Tickets" instead, and share that file with the Admin app manually.'); return; }
+  try{
+    fileHandle = await window.showSaveFilePicker({
+      suggestedName: 'giz_ticket_store.json',
+      types: [{description:'Ticket store JSON', accept:{'application/json':['.json']}}]
+    });
+    await writeStoreToFile();
+    startAutoSync();
+    setSyncStatus('Connected (new file): ' + fileHandle.name, 'on');
+  }catch(e){ /* user cancelled picker */ }
+}
+
+async function connectExistingFile(){
+  if(!supportsFS()){ alert('Your browser doesn\'t support direct file sync (needs Chrome or Edge). Use the manual backup Export/Import in "My Tickets" instead.'); return; }
+  try{
+    [fileHandle] = await window.showOpenFilePicker({
+      types: [{description:'Ticket store JSON', accept:{'application/json':['.json']}}]
+    });
+    await readStoreFromFile();
+    startAutoSync();
+    setSyncStatus('Connected: ' + fileHandle.name, 'on');
+  }catch(e){ /* user cancelled picker */ }
+}
+
+async function writeStoreToFile(){
+  if(!fileHandle) return;
+  const writable = await fileHandle.createWritable();
+  await writable.write(JSON.stringify({tickets, ticketSeq}, null, 2));
+  await writable.close();
+}
+
+async function readStoreFromFile(){
+  if(!fileHandle) return;
+  const file = await fileHandle.getFile();
+  const text = await file.text();
+  if(!text || !text.trim()) return;
+  let parsed;
+  try{ parsed = JSON.parse(text); } catch(e){ return; }
+  mergeTickets(parsed.tickets || []);
+  ticketSeq = Math.max(ticketSeq, parsed.ticketSeq || 1);
+  renderAll();
+}
+
+function mergeTickets(remoteList){
+  const map = {};
+  tickets.forEach(t=>{ map[t.id] = t; });
+  remoteList.forEach(rt=>{
+    const lt = map[rt.id];
+    if(!lt){ map[rt.id] = rt; }
+    else{
+      const rtTime = new Date(rt.updatedAt || rt.date).getTime();
+      const ltTime = new Date(lt.updatedAt || lt.date).getTime();
+      if(rtTime > ltTime) map[rt.id] = rt; // last-write-wins per ticket
+    }
+  });
+  tickets = Object.values(map).sort((a,b)=> new Date(a.date) - new Date(b.date));
+}
+
+async function syncNow(){
+  if(!fileHandle || syncing) return;
+  syncing = true;
+  try{
+    await readStoreFromFile();
+    await writeStoreToFile();
+    setSyncStatus('Synced ' + new Date().toLocaleTimeString(), 'on');
+  }catch(e){
+    setSyncStatus('Sync error — will retry (' + e.message + ')', 'err');
+  }
+  syncing = false;
+}
+
+function startAutoSync(){
+  if(autoSyncTimer) clearInterval(autoSyncTimer);
+  autoSyncTimer = setInterval(syncNow, 8000);
+}
+
+/* ---------------------------------------------------------------
+   VIEW SWITCHING + INIT
+--------------------------------------------------------------- */
+function showView(name){
+  ['chat','mine'].forEach(v=>{
+    document.getElementById('view-'+v).classList.toggle('active', v===name);
+    document.getElementById('tab-'+v).classList.toggle('active', v===name);
+  });
+  if(name==='mine') renderMyTickets();
+}
+
+document.getElementById('myContactInput').addEventListener('keydown', e=>{ if(e.key==='Enter') renderMyTickets(); });
+
+startConversation();
+renderAll();
+</script>
+</body>
+</html>
